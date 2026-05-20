@@ -6,6 +6,8 @@
 
 *No binaries. No daemons. No SDK. Just one markdown file and a directory of agent personas.*
 
+[English](README.md) · [中文](README.zh.md)
+
 </div>
 
 ---
@@ -62,7 +64,7 @@ The harness is entirely declarative. There is no runtime, no plugin, no Node pac
 
 ```bash
 # 1. Drop CLAUDE.md into your repo root
-curl -O https://raw.githubusercontent.com/kyoubelyu/cadence/main/CLAUDE.md
+curl -O https://raw.githubusercontent.com/kyoubelyu/claude-cadence/main/CLAUDE.md
 
 # 2. (Optional) Copy the agent definitions
 mkdir -p .claude/agents
