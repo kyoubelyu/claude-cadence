@@ -1,4 +1,5 @@
 <div align="center">
+<img width="3024" height="1296" alt="jimeng-2026-05-20-5355-更换成苹果电脑" src="https://github.com/user-attachments/assets/40258957-a642-4e74-b284-1e8324a172b7" />
 
 # cadence
 
