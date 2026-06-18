@@ -15,7 +15,7 @@ _Reserved for per-repository scope. Populate with:_
 - **Explicit non-goals** — features and integrations that are out of scope; record retired/abandoned directions with date + rationale.
 - **Live environment** — what the agent operates against during verification (real user account, real browser, real API), and which phases are read-only vs. full live windows.
 
-If any of these are unclear, resolve them in the Research gate (§2 → Phase Gate Matrix, Step 1) before implementation.
+If any of these are unclear, resolve them during Step 0 exploration (§2 → Phase Gate Matrix, Step 0) before implementation.
 
 ---
 
@@ -106,9 +106,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ### Test Discipline (outside-in TDD + BDD-light)
 
-**Outside-in TDD**: validator writes failing test scaffolds **BEFORE** builder implements (Phase Gate Matrix Step 4a precedes Step 4b). Scaffolds compile + all assertion bodies are TODO; tests intentionally fail. Builder's job at Step 4b is to make scaffolds compile + reach the assertion-TODO branch (no need to make TODO assertions pass yet — those are filled at Step 5). Validator's Step 5 fills assertion bodies + adds edge cases + runs the full suite.
+**Outside-in TDD**: validator writes failing test scaffolds **BEFORE** builder implements (Phase Gate Matrix Step 3 precedes Step 4). Scaffolds compile + all assertion bodies are TODO; tests intentionally fail. Builder's job at Step 4 is to make scaffolds compile + reach the assertion-TODO branch (no need to make TODO assertions pass yet — those are filled at Step 5). Validator's Step 5 fills assertion bodies + adds edge cases + runs the full suite.
 
-Why: the test scaffold IS the contract. Writing scaffolds before code prevents validator unconsciously aligning tests to whatever builder happened to implement. Architect's §5 plan must list **testable behaviors** (concrete pre/post conditions), not abstract gates. The pre-written scaffold catches builder/spec mismatch at Step 4b not at Step 5a rounds later.
+Why: the test scaffold IS the contract. Writing scaffolds before code prevents validator unconsciously aligning tests to whatever builder happened to implement. Architect's §5 plan must list **testable behaviors** (concrete pre/post conditions), not abstract gates. The pre-written scaffold catches builder/spec mismatch at Step 4 not at Step 5a rounds later.
 
 **BDD-light** (independent of TDD; adopted together):
 - **Test names describe behavior, not function names.** Example: `T-Compact.2: when messages.length <= LAST_K, returns messages unchanged with summarizedCount=0`. Not: `test compactMessages()`.
@@ -123,7 +123,7 @@ Why: the test scaffold IS the contract. Writing scaffolds before code prevents v
 - **NO Gherkin / NO `.feature` files / NO Cucumber.** The discipline is in test names + intent comments + describe grouping; separate spec files add overhead without value.
 
 **`docs/phase-N-test.md` is two-pass.** Validator writes it twice in a single phase:
-1. **Step 4a** (scaffold-time): test contract — list of test names + intent comments + which gates they cover. Tells builder + guardian what behaviors are about to be verified.
+1. **Step 3** (scaffold-time): test contract — list of test names + intent comments + which gates they cover. Tells builder + guardian what behaviors are about to be verified.
 2. **Step 5 final** (post-run, after all 5a iterations): test report — actual results, defects found, gate verdicts, residual risks. Appended as additional sections; the Step-4a test contract stays in the doc as historical record.
 
 The accumulated `phase-N-test.md` is self-contained: contract → results trail.
@@ -169,48 +169,50 @@ Concrete version assignment is owned by `ROADMAP.md` § Version sequence — orc
 5. Subagents are serial by default. Parallel work is allowed only after the main plan is frozen and the tasks have independent concerns or disjoint write ranges.
 6. Source classification, contract impact, and external-system runtime behavior must be resolved before implementation begins.
 7. Resource-exclusive verification (e.g. only one browser instance, only one DB lock) must run serially.
-8. Any load-bearing security boundary defined in §1 → Product Contract is non-negotiable **at the agent / tool layer**. Operator-initiated CLI-layer exceptions (narrow maintenance commands) require Phase Gate Matrix Steps 1–7 with explicit operator approval at Step 3, and a CLAUDE.md amendment recording the approved use case. The agent's LLM-callable tool surface remains within the boundary without exception.
+8. Any load-bearing security boundary defined in §1 → Product Contract is non-negotiable **at the agent / tool layer**. Operator-initiated CLI-layer exceptions (narrow maintenance commands) require Phase Gate Matrix Steps 0–7 with explicit operator approval at Step 2 (Critic), and a CLAUDE.md amendment recording the approved use case. The agent's LLM-callable tool surface remains within the boundary without exception.
 9. **Operator validation gates between major versions:** record explicit operator sign-off points (e.g. v0.3 → v0.4 → v1.0). Auto-mode must halt at these boundaries.
 
 ### Phase Gate Matrix
 
 **Non-simple work runs these gates in order.** The orchestrator tells every subagent: phase number, title, scope, current gate, required reads, allowed writes, expected output. **Every agent must read the phase-N entry in `ROADMAP.md` before doing its step** — the entry defines goal, scope, gates, live verification target, blockers, next action.
 
-**Outside-in TDD:** Step 4 is split into 4a (validator scaffold) and 4b (builder implementation). See § Test Discipline above for the full rationale.
+**Outside-in TDD:** the validator writes the test scaffold (Step 3) **before** the builder implements (Step 4). See § Test Discipline above for the full rationale.
+
+**Operator direction gate (Step 0):** the orchestrator explores directly, then confirms the chosen route/direction with the human operator **before** writing it into `ROADMAP.md`. In normal (non-auto) mode the orchestrator **halts** for operator sign-off here. In auto mode the orchestrator stands in for the operator and decides the direction itself (see § Auto Mode).
 
 | Step | Gate | Agent | Required Reads¹ | Allowed Writes² | Output | On Fail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Roadmap Entry | orchestrator | prior phase docs (if any) | roadmap | new phase-N entry in `ROADMAP.md` | → 1 |
-| 1 | Research | `scout` | — | docs | `docs/phase-N-research.md` | → 2 |
-| 2 | Plan | `architect` | research doc | docs | `docs/phase-N-plan.md` (§5 must list **testable behaviors** with concrete pre/post conditions, not abstract gates) | → 3 |
-| 3 | Critic | `guardian` | research + plan | docs | `docs/phase-N-critics.md` | → 3a or 3b |
-| 3a | Research Revision | `scout` | critics doc | docs | revised research | → 2 or 3 |
-| 3b | Plan Revision | `architect` | critics doc | docs | revised plan | → 3 |
-| **4a** | **Test Scaffold** | **`validator`** | plan §5 + §6 sketches | test code (scaffolds — compileable, all-failing, named per §5; assertion bodies are TODO) + docs (initial `docs/phase-N-test.md` § Test Contract: name + GWT intent comment + which gates each covers) | scaffolds compile + all fail; test contract doc | → 4b |
-| **4b** | **Implementation** | **`builder`** | plan + 4a scaffolds | code (production only — NO test files) | scoped code; scaffolds compile + reach assertion-TODO branch (no need to satisfy TODO assertions yet — those are filled at Step 5) | → 5 |
+| 0 | Roadmap Entry + Exploration | orchestrator | prior phase docs (if any) | roadmap | exploration findings + chosen direction confirmed with operator (non-auto: halt for sign-off; auto: orchestrator decides), written as the new phase-N entry in `ROADMAP.md` | → 1 |
+| 1 | Plan | `architect` | phase-N entry (exploration findings) | docs | `docs/phase-N-plan.md` (§5 must list **testable behaviors** with concrete pre/post conditions, not abstract gates) | → 2 |
+| 2 | Critic | `guardian` | plan | docs | `docs/phase-N-critics.md` | → 2a or 0 |
+| 2a | Plan Revision | `architect` | critics doc | docs | revised plan (if a research/exploration gap is found, hand back to orchestrator → Step 0) | → 2 |
+| **3** | **Test Scaffold** | **`validator`** | plan §5 + §6 sketches | test code (scaffolds — compileable, all-failing, named per §5; assertion bodies are TODO) + docs (initial `docs/phase-N-test.md` § Test Contract: name + GWT intent comment + which gates each covers) | scaffolds compile + all fail; test contract doc | → 4 |
+| **4** | **Implementation** | **`builder`** | plan + Step 3 scaffolds | code (production only — NO test files) | scoped code; scaffolds compile + reach assertion-TODO branch (no need to satisfy TODO assertions yet — those are filled at Step 5) | → 5 |
 | 5 | Validation | `validator` | plan + builder diff + own scaffolds | test code (fill assertion bodies + add edge cases) + docs (append § Results to `docs/phase-N-test.md`) | mock + live tests + final test report (defects, gate verdicts, residuals) | → 5a |
 | 5a | Validation Fix | `builder` | test + plan | code (production only) | scoped fixes | → 5 |
-| 6 | Final Review | `guardian` | all phase docs | docs | `docs/phase-N-review.md` | → 5a |
+| 6 | Final Review (Audit) | `guardian` | all phase docs | docs | `docs/phase-N-review.md` | → 5a |
 | 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | phase-N entry marked complete; **`git commit` + `git tag` + `git push origin main` + `git push origin <tag>` (workflow auto-publishes GitHub Release)** | phase complete |
 
 ¹ **Implicit read for every step:** the phase-N entry in `ROADMAP.md`. The "Required Reads" column lists additional inputs on top of that.
 
-² **Write scopes** — `docs`: reports under `docs/` only. `test code + docs`: may write mock + live test code in `tests/**` + reports under `docs/`; no production code edits. `code`: production files within approved phase scope only — **builder MUST NOT write test files (mock or live); that is validator's exclusive scope at Steps 4a + 5**. If builder believes a test is needed during Step 4b, hand it back to validator via SendMessage to the orchestrator. `roadmap + git`: only `ROADMAP.md` + git operations (commit/tag/push).
+² **Write scopes** — `docs`: reports under `docs/` only. `test code + docs`: may write mock + live test code in `tests/**` + reports under `docs/`; no production code edits. `code`: production files within approved phase scope only — **builder MUST NOT write test files (mock or live); that is validator's exclusive scope at Steps 3 + 5**. If builder believes a test is needed during Step 4, hand it back to validator via SendMessage to the orchestrator. `roadmap + git`: only `ROADMAP.md` + git operations (commit/tag/push). At Step 0 the orchestrator owns exploration directly (Read/Grep/Glob/WebSearch) — `scout` is no longer part of the main matrix and is reserved for GitHub Issue Intake.
 
 ### Agent Roster
 
-**Six agents — five specialized + one general-purpose.** Specialists run inside the Phase Gate Matrix. `worker` is the only general-purpose agent, sits outside the matrix, and handles simple work per Hard Rule 1. All agents may Read/Grep/Glob, run safe Bash (read-only), and WebFetch/WebSearch. All agents must `SendMessage` to the orchestrator (clarify, escalate, hand back); the orchestrator must `SendMessage` to any teammate.
+**Six agents — five specialized + one general-purpose.** `architect`, `guardian`, `builder`, and `validator` run inside the Phase Gate Matrix; `scout` is reserved for GitHub Issue Intake (Step 0 exploration is now done by the orchestrator directly). `worker` is the only general-purpose agent, sits outside the matrix, and handles simple work per Hard Rule 1. All agents may Read/Grep/Glob, run safe Bash (read-only), and WebFetch/WebSearch. All agents must `SendMessage` to the orchestrator (clarify, escalate, hand back); the orchestrator must `SendMessage` to any teammate.
 
 **Effort levels**: if the harness exposes only a single global `effortLevel` knob, all agents inherit it. The per-agent effort column below is **design intent** — encode it in `.claude/agents/<name>.md` frontmatter once per-agent effort is supported.
 
+**Model `inherit`** means the agent follows the main session model. Set it explicitly via `model: inherit` in each agent's `.claude/agents/<name>.md` frontmatter — **omitting** `model` falls back to the harness default subagent model, which is not necessarily the main model.
+
 | Agent | Steps | Write Permissions | Model | Effort |
 | --- | --- | --- | --- | --- |
-| `scout` | 1, 3a | docs | `claude-sonnet-4-6` | xhigh |
-| `architect` | 2, 3b | docs | `claude-opus-4-7` | xhigh |
-| `guardian` | 3, 6 | docs | `claude-sonnet-4-6` | xhigh |
-| `builder` | 4b, 5a | code (within phase scope) | `claude-opus-4-7` | xhigh (harness limit; design intent: medium) |
-| `validator` | 4a, 5 | test code + docs | `claude-sonnet-4-6` | xhigh |
-| `worker` | (outside matrix) | code (simple tasks only) | `claude-sonnet-4-6` | xhigh |
+| `scout` | (issue intake only) | docs | `inherit` | xhigh |
+| `architect` | 1, 2a | docs | `inherit` | xhigh |
+| `guardian` | 2, 6 | docs | `inherit` | xhigh |
+| `builder` | 4, 5a | code (within phase scope) | `inherit` | xhigh (harness limit; design intent: medium) |
+| `validator` | 3, 5 | test code + docs | `inherit` | xhigh |
+| `worker` | (outside matrix) | code (simple tasks only) | `inherit` | xhigh |
 | orchestrator | 0, 7 | roadmap + git | — | — |
 
 ### Orchestrator Handoff Discipline
@@ -225,11 +227,11 @@ Apply at each transition:
 
 | Transition | Orchestrator must read before dispatch |
 |---|---|
-| Step 1 (scout) → Step 2 (architect) | `docs/phase-N-research.md` end-to-end; surface any BLOCKER-RISK / OQ items into architect's dispatch as required-action items. |
-| Step 2 (architect) → Step 3 (guardian) | `docs/phase-N-plan.md` end-to-end; verify §6.4 locked code sketches exist; note any concerns to flag for guardian's specific items-to-verify list. |
-| Step 3 (guardian) → Step 3a (scout) / 3b (architect) / 4a (validator) | `docs/phase-N-critics.md` end-to-end; categorize all BLOCKER / CONCERN / NIT findings; thread CONCERN-MR items into the next dispatch's instructions. |
-| Step 4a (validator) → Step 4b (builder) | Read initial `docs/phase-N-test.md` § Test Contract end-to-end; verify scaffolds list matches plan §5 testable-behaviors; thread test-name list into builder's dispatch so builder knows which behaviors must compile-pass. |
-| Step 4b (builder) → Step 5 (validator) | Run project-defined check/lint/build; verify scaffolds compile + reach assertion-TODO branch; thread any builder-flagged drift or pre-existing issues into validator's dispatch. |
+| Step 0 (orchestrator exploration) → Step 1 (architect) | The phase-N `ROADMAP.md` entry end-to-end; confirm the operator-approved direction is recorded; surface any BLOCKER-RISK / OQ exploration items into architect's dispatch as required-action items. |
+| Step 1 (architect) → Step 2 (guardian) | `docs/phase-N-plan.md` end-to-end; verify §6.4 locked code sketches exist; note any concerns to flag for guardian's specific items-to-verify list. |
+| Step 2 (guardian) → Step 2a (architect) / Step 0 (re-explore) / Step 3 (validator) | `docs/phase-N-critics.md` end-to-end; categorize all BLOCKER / CONCERN / NIT findings; thread CONCERN-MR items into the next dispatch's instructions. |
+| Step 3 (validator) → Step 4 (builder) | Read initial `docs/phase-N-test.md` § Test Contract end-to-end; verify scaffolds list matches plan §5 testable-behaviors; thread test-name list into builder's dispatch so builder knows which behaviors must compile-pass. |
+| Step 4 (builder) → Step 5 (validator) | Run project-defined check/lint/build; verify scaffolds compile + reach assertion-TODO branch; thread any builder-flagged drift or pre-existing issues into validator's dispatch. |
 | Step 5 (validator) → Step 5a (builder) / Step 6 (guardian) | `docs/phase-N-test.md` end-to-end; record test pass counts + per-gate G-PN.x verdicts in dispatch context. |
 | Step 6 (guardian) → Step 7 (orchestrator self) / 5a (builder) | `docs/phase-N-review.md` end-to-end; if ACCEPT, proceed to Step 7; if REJECT, route back with full BLOCKER list. |
 
@@ -255,8 +257,9 @@ When the user says `auto mode`:
 1. Re-read this `CLAUDE.md` and `ROADMAP.md` (also on resume, interruption, or context compaction).
 2. Continue the current phase, or insert the smallest blocker-resolution phase if blocked.
 3. Follow the Phase Gate Matrix exactly; do not advance until all gates pass.
-4. **Auto-commit on Step 7** per Commit Policy above.
-5. **Halt at operator-validation boundaries** (per Hard Rule 9) for explicit operator validation; do not auto-advance across major version gates.
+4. **Step 0 direction gate:** the orchestrator stands in for the operator and decides the chosen route itself, then writes it into `ROADMAP.md` — it does **not** halt for sign-off here (normal mode halts; auto mode does not).
+5. **Auto-commit on Step 7** per Commit Policy above.
+6. **Halt at operator-validation boundaries** (per Hard Rule 9) for explicit operator validation; do not auto-advance across major version gates.
 
 ---
 

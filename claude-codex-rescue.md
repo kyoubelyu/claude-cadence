@@ -4,7 +4,7 @@ Behavioral guidelines and multi-agent process rules for this codebase.
 
 **Tradeoff:** Bias toward caution over speed. For trivial tasks, use judgment.
 
-**Engine split (this variant):** the implementation/fix role and the critic/audit role are delegated to the **Codex rescue skill** (`codex:rescue`) instead of the in-team `builder` and `guardian` Claude agents. See § Codex Rescue Delegation.
+**Engine split (this variant):** the implementation/fix role and the critic/audit role are delegated to **Codex** via the `codex:codex-rescue` rescue subagent (Agent tool) instead of the in-team `builder` and `guardian` Claude agents. See § Codex Rescue Delegation.
 
 ## Project Scope
 
@@ -150,7 +150,7 @@ Concrete version assignment is owned by `ROADMAP.md` § Version sequence — orc
 - **Precedence (suggested):** factory `model:` parameter > CLI `--model <provider:modelId>` flag > env var > on-disk auth config `default` field > hardcoded fallback.
 - **Provider auth:** env var (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) OR managed auth config file. Providers that piggyback on another's protocol (e.g. DeepSeek via OpenAI-compatible `baseURL`) are recorded here.
 - **Inline `.env` reader at CLI startup** is acceptable (no runtime `dotenv` dependency needed); provide an opt-out env var.
-- **Codex engine:** the implementation/fix + critic/audit roles run on the Codex CLI (GPT-5.x) via the `codex:rescue` skill. Codex provider auth + model selection is owned by the Codex CLI config, not this repo's LLM config. Confirm readiness with `/codex:setup` before relying on it in a phase.
+- **Codex engine:** the implementation/fix + critic/audit roles run on the Codex CLI (GPT-5.x) via the `codex:codex-rescue` rescue subagent. Codex provider auth + model selection is owned by the Codex CLI config, not this repo's LLM config. Confirm readiness with `/codex:setup` before relying on it in a phase.
 
 > Per-project env-var enumeration belongs in `ROADMAP.md` § Env-var reference — a per-phase-accreting catalogue belongs with phase tracking, not in CLAUDE.md (which holds stable code/project requirements + process).
 
@@ -165,9 +165,9 @@ Concrete version assignment is owned by `ROADMAP.md` § Version sequence — orc
 
 ### Codex Rescue Delegation
 
-In this variant the former `builder` and `guardian` Claude agents are replaced by the **Codex rescue skill**:
+In this variant the former `builder` and `guardian` Claude agents are replaced by the **`codex:codex-rescue` rescue subagent** (invoked via the Agent tool):
 
-- **Invocation.** The orchestrator runs the `codex:rescue` skill (Skill tool) to delegate a step to Codex; Codex performs the work through its own runtime and returns the deliverable to the orchestrator. The orchestrator then applies § Orchestrator Handoff Discipline to that deliverable exactly as it would for a Claude teammate's output.
+- **Invocation.** The orchestrator invokes the `codex:codex-rescue` subagent via the **Agent tool** (`subagent_type: "codex:codex-rescue"`), forwarding the step; Codex performs the work through its own runtime and returns the deliverable. Do **not** call `Skill(codex:rescue)` from the agent loop — that re-enters the operator-facing slash command and hangs the session (`/codex:rescue` is the human entry point; there is no `codex:codex-rescue` skill). The orchestrator then applies § Orchestrator Handoff Discipline to that deliverable exactly as for a Claude subagent's output.
 - **Prerequisite.** Codex CLI must be ready. Run `/codex:setup` once before the first delegated step; if the rescue runtime is unavailable mid-phase, insert a blocker phase (Hard Rule 4) — do **not** silently fall back to a Claude agent without recording it.
 - **Briefing contract.** The rescue prompt IS Codex's contract: it must carry the phase number/title/scope, the current gate, required reads, allowed write scope, and the expected output — same discipline the orchestrator owes any subagent.
 - **Independence.** Codex performs both the implementer role (Steps 4, 5a) and the critic/audit role (Steps 2, 6). To preserve adversarial independence, the critic (Step 2) and audit (Step 6) invocations MUST be **fresh Codex sessions** that do not share the implementer's working context — the reviewer must not be primed by the implementer's rationale. Claude's `validator` (Steps 3, 5) and orchestrator (Steps 0, 7) remain a cross-engine check on Codex's work.
@@ -212,16 +212,18 @@ In this variant the former `builder` and `guardian` Claude agents are replaced b
 
 ### Agent Roster
 
-**Three Claude agents + one general-purpose + the Codex rescue skill.** `architect` and `validator` run inside the Phase Gate Matrix; the `codex:rescue` skill performs the implementation/fix role (Steps 4, 5a) and the critic/audit role (Steps 2, 6), replacing the former `builder` and `guardian` agents. Step 0 exploration is done by the orchestrator directly. `worker` is the only general-purpose agent, sits outside the matrix, and handles simple work per Hard Rule 1. All Claude agents may Read/Grep/Glob, run safe Bash (read-only), and WebFetch/WebSearch. All agents must `SendMessage` to the orchestrator (clarify, escalate, hand back); the orchestrator must `SendMessage` to any teammate and invokes `codex:rescue` via the Skill tool.
+**Three Claude agents + one general-purpose + Codex via the `codex:codex-rescue` subagent.** `architect` and `validator` run inside the Phase Gate Matrix; the `codex:codex-rescue` subagent performs the implementation/fix role (Steps 4, 5a) and the critic/audit role (Steps 2, 6), replacing the former `builder` and `guardian` agents. Step 0 exploration is done by the orchestrator directly. `worker` is the only general-purpose agent, sits outside the matrix, and handles simple work per Hard Rule 1. All Claude agents may Read/Grep/Glob, run safe Bash (read-only), and WebFetch/WebSearch. All agents must `SendMessage` to the orchestrator (clarify, escalate, hand back); the orchestrator must `SendMessage` to any teammate and invokes Codex via the **Agent tool** (`subagent_type: "codex:codex-rescue"`), never via `Skill()`.
 
 **Effort levels**: if the harness exposes only a single global `effortLevel` knob, all agents inherit it. The per-agent effort column below is **design intent** — encode it in `.claude/agents/<name>.md` frontmatter once per-agent effort is supported.
 
+**Model `inherit`** means the agent follows the main session model. Set it explicitly via `model: inherit` in each agent's `.claude/agents/<name>.md` frontmatter — **omitting** `model` falls back to the harness default subagent model, which is not necessarily the main model. (`codex rescue` is exempt — its model is owned by the Codex CLI config.)
+
 | Actor | Steps | Write Permissions | Model | Effort |
 | --- | --- | --- | --- | --- |
-| `architect` | 1, 2a | docs | `claude-opus-4-7` | xhigh |
-| `validator` | 3, 5 | test code + docs | `claude-sonnet-4-6` | xhigh |
+| `architect` | 1, 2a | docs | `inherit` | xhigh |
+| `validator` | 3, 5 | test code + docs | `inherit` | xhigh |
 | `codex rescue` (skill) | 2, 4, 5a, 6 | code (Steps 4, 5a) / docs (Steps 2, 6) | Codex CLI (GPT-5.x) | per Codex config |
-| `worker` | (outside matrix) | code (simple tasks only) | `claude-sonnet-4-6` | xhigh |
+| `worker` | (outside matrix) | code (simple tasks only) | `inherit` | xhigh |
 | orchestrator | 0, 7 | roadmap + git | — | — |
 
 ### Orchestrator Handoff Discipline

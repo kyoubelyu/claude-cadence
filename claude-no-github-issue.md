@@ -203,13 +203,15 @@ Concrete version assignment is owned by `ROADMAP.md` § Version sequence — orc
 
 **Effort levels**: if the harness exposes only a single global `effortLevel` knob, all agents inherit it. The per-agent effort column below is **design intent** — encode it in `.claude/agents/<name>.md` frontmatter once per-agent effort is supported.
 
+**Model `inherit`** means the agent follows the main session model. Set it explicitly via `model: inherit` in each agent's `.claude/agents/<name>.md` frontmatter — **omitting** `model` falls back to the harness default subagent model, which is not necessarily the main model.
+
 | Agent | Steps | Write Permissions | Model | Effort |
 | --- | --- | --- | --- | --- |
-| `architect` | 1, 2a | docs | `claude-opus-4-7` | xhigh |
-| `guardian` | 2, 6 | docs | `claude-sonnet-4-6` | xhigh |
-| `builder` | 4, 5a | code (within phase scope) | `claude-opus-4-7` | xhigh (harness limit; design intent: medium) |
-| `validator` | 3, 5 | test code + docs | `claude-sonnet-4-6` | xhigh |
-| `worker` | (outside matrix) | code (simple tasks only) | `claude-sonnet-4-6` | xhigh |
+| `architect` | 1, 2a | docs | `inherit` | xhigh |
+| `guardian` | 2, 6 | docs | `inherit` | xhigh |
+| `builder` | 4, 5a | code (within phase scope) | `inherit` | xhigh (harness limit; design intent: medium) |
+| `validator` | 3, 5 | test code + docs | `inherit` | xhigh |
+| `worker` | (outside matrix) | code (simple tasks only) | `inherit` | xhigh |
 | orchestrator | 0, 7 | roadmap + git | — | — |
 
 ### Orchestrator Handoff Discipline
