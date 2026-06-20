@@ -120,7 +120,7 @@ Test-writing style for all test code. (The outside-in TDD gate flow — who writ
 
 ### Commit + Release Policy
 
-- **Auto-commit on phase completion:** when the final step of the active mode marks a phase complete (Step 7 in full mode, FM-3 in Fast Mode), the orchestrator creates a git commit summarizing that phase's work.
+- **Auto-commit on phase completion:** when the final step of the active mode marks a phase complete (Step 7 in full mode, FM-4 in Fast Mode), the orchestrator creates a git commit summarizing that phase's work.
 - When preparing a commit, list every changed file with a one-sentence description of its change.
 - Commit attribution trailer is project-defined (record it in this section if used).
 - Commits never include credential values. Credential / secret files stay outside git (gitignored). If an agent surfaces a credential in any docs, log, or commit message, treat it as an incident and rotate the credential.
@@ -166,7 +166,7 @@ When `ROADMAP.md` grows large (accumulated completed-phase detail), the orchestr
 
 1. Simple requirements (e.g. a single obvious edit) may be handled directly by `worker`.
 2. Non-simple requirements must use the Phase Gate Matrix (or Fast Mode where eligible); no step starts until the previous passes; no phase starts until the previous completes its final step.
-3. No implementation before research, plan, test-scaffold, and critic approval (full mode). In Fast Mode, no implementation before the orchestrator's plan (FM-0).
+3. No implementation before research, plan, test-scaffold, and critic approval (full mode). In Fast Mode, no implementation before the orchestrator's plan (FM-0) and the FM-1 critic pass.
 4. Blockers must be inserted into `ROADMAP.md` as a blocker phase before being worked around — including unavailability of the Codex rescue runtime.
 5. Subagents are serial by default. Parallel work is allowed only after the plan is frozen and the tasks have independent concerns or disjoint write ranges — the FE/BE split is the canonical parallel case (see § Frontend / Backend Split for the rule).
 6. Source classification, contract impact, FE/BE routing, and external-system runtime behavior must be resolved before implementation begins.
@@ -174,7 +174,7 @@ When `ROADMAP.md` grows large (accumulated completed-phase detail), the orchestr
 8. Any load-bearing security boundary defined in §1 → Product Contract is non-negotiable **at the agent / tool layer**. Operator-initiated CLI-layer exceptions (narrow maintenance commands) require the full Phase Gate Matrix with explicit operator approval at the critic gate (Step 3), and a CLAUDE.md amendment recording the approved use case. The agent's LLM-callable tool surface remains within the boundary without exception.
 9. **Operator validation gates between major versions:** record explicit operator sign-off points (e.g. v0.3 → v0.4 → v1.0). Auto-mode must halt at these boundaries.
 10. **`CLAUDE.md` is the project core + the agent's operating contract (its identity / "soul").** The agent MUST NOT create, edit, or self-update `CLAUDE.md` without explicit operator approval — operator-approved amendments (e.g. the Hard Rule 8 exception path) are the only way it changes. Live progress/state lives in `ROADMAP.md`; durable core/process lives in `CLAUDE.md`.
-11. **Gate work runs in subagents — the orchestrator coordinates, it does not do the work.** In **full mode** the orchestrator's *only* hands-on gates are Step 0 (exploration + roadmap) and Step 7 (commit); **every other gate MUST be dispatched to its designated actor via the Agent tool** — the `architect` / `validator` / `builder` Claude subagents, or Codex (`codex:codex-rescue`) for backend + critic + audit — and the orchestrator MUST NOT write a plan, test scaffold, production code, critique, or audit itself. Collapsing a full-mode gate into the main loop defeats the independent-review design and is a process violation. In **Fast Mode** the orchestrator is hands-on for FM-0 (plan), FM-1 **frontend** code + mock tests, FM-2 (live verification), and FM-3 (commit); **only backend code is dispatched (to Codex)**. (Simple `worker` tasks under Hard Rule 1 also run in the `worker` subagent, not the main loop.)
+11. **Gate work runs in subagents — the orchestrator coordinates, it does not do the work.** In **full mode** the orchestrator's *only* hands-on gates are Step 0 (exploration + roadmap) and Step 7 (commit); **every other gate MUST be dispatched to its designated actor via the Agent tool** — the `architect` / `validator` / `builder` Claude subagents, or Codex (`codex:codex-rescue`) for backend + critic + audit — and the orchestrator MUST NOT write a plan, test scaffold, production code, critique, or audit itself. Collapsing a full-mode gate into the main loop defeats the independent-review design and is a process violation. In **Fast Mode** the orchestrator is hands-on only for FM-0 (plan), FM-3 (live verification), and FM-4 (commit); the FM-1 critic and FM-2 implementation are dispatched (critic + backend → Codex, frontend → `builder`). **The orchestrator never writes production code in either mode.** (Simple `worker` tasks under Hard Rule 1 also run in the `worker` subagent, not the main loop.)
 
 ### Phase Gate Matrix (full mode)
 
@@ -219,37 +219,36 @@ The accumulated `phase-N-test.md` is self-contained: contract → results trail.
 
 **Eligibility (authoritative):** Fast Mode is **NOT** allowed for changes that touch a load-bearing security boundary (Hard Rule 8), schema migrations, or anything crossing an operator-validation boundary (Hard Rule 9). Those always use the full Phase Gate Matrix. If risk or a failure emerges mid-flight, escalate: open a normal phase and resume under full gates.
 
-Fast Mode is a **two-party** flow: the orchestrator drives everything except backend code, which still goes to Codex.
-
 | Step | Gate | Actor | Notes |
 | --- | --- | --- | --- |
 | FM-0 | Research + Plan | orchestrator | Orchestrator explores **and** writes the plan itself (no scout/architect), including FE/BE classification + the FE↔BE interface contract. Output: lightweight plan in the phase-N entry (+ optional `docs/phase-N-plan.md`). Operator direction gate still applies (non-auto halts; auto decides). |
-| FM-1 | Implementation + Mock Tests (FE ∥ BE) | orchestrator (frontend) ∥ Codex (backend) | The orchestrator writes **frontend** production code + mock tests **itself** (the one Hard Rule 11 carve-out); **Codex** writes the **backend** code + mock tests. The two run in parallel on disjoint write ranges (§ Frontend / Backend Split). |
-| FM-2 | Live Verification | orchestrator | Orchestrator runs the mock suite + live smoke tests against the real target. On fail → back to FM-1 for the responsible layer. |
-| FM-3 | Commit | orchestrator | Commit sequence per § Commit + Release Policy. |
+| FM-1 | Critic | Codex (fresh session) | Reviews the orchestrator's plan + FE/BE split. On fail → back to FM-0. |
+| FM-2 | Implementation + Mock Tests (FE ∥ BE) | `builder` (frontend) + Codex (backend) | Each writes production code **and** its layer's mock tests, in parallel on disjoint write ranges (§ Frontend / Backend Split). |
+| FM-3 | Live Verification | orchestrator | Orchestrator runs the mock suite + live smoke tests against the real target. On fail → back to FM-2 for the responsible layer. |
+| FM-4 | Commit | orchestrator | Commit sequence per § Commit + Release Policy. |
 
 **Deltas vs full mode:**
-- **Dropped:** the architect plan gate, the validator test-scaffold + validation gates, the **critic**, and the final **audit**. There is no separate validator pass; tests are the mock tests each side writes inline.
-- **Orchestrator carve-out:** the orchestrator writes the plan (FM-0), the **frontend** code + mock tests (FM-1), runs live verification (FM-2), and commits (FM-3) — see Hard Rule 11. It still MUST NOT write backend code; that goes to Codex.
-- **Participants:** orchestrator + Codex (backend only). `architect`, `validator`, `builder`, and the critic/audit all step aside.
+- **Dropped:** the architect plan gate (orchestrator plans), the validator test-scaffold + validation gates, and the final **audit**. The critic (FM-1) is kept but reviews the plan only — no TDD scaffold exists.
+- **Test-authoring exception:** each implementer writes its own layer's **mock tests** alongside the code — the only place the "implementers must not write tests" rule is relaxed, scoped to mock tests.
+- **Participants:** orchestrator (plan / live verification / commit), `builder` (FE), Codex (FM-1 critic + BE implementation, separate sessions); `architect` and `validator` step aside. The orchestrator never writes production code (Hard Rule 11).
 - **Unchanged:** all §1 safety boundaries, the FE/BE split + parallelism rules, and live-verification requirements for external authoritative systems.
 
 ### Frontend / Backend Split
 
 Implementation and fix work is routed by layer; this section is authoritative for routing + parallelism.
 
-- **Frontend → Claude `builder`** (full mode) **or the orchestrator** (Fast Mode). **Backend → Codex (`codex:codex-rescue` subagent)** in both modes.
+- **Frontend → Claude `builder`. Backend → Codex (`codex:codex-rescue` subagent).** (Both modes; the orchestrator never writes production code — Hard Rule 11.)
 - **Who classifies.** The **orchestrator** classifies each work item as FE or BE and records the classification in the phase-N `ROADMAP.md` entry (and references it from the plan). The architect's plan must keep FE and BE concerns in **separable sections with disjoint write ranges** so the two implementers don't collide.
-- **Parallelism (the rule).** Once the plan is frozen (full mode: after the Step 3 critic pass; Fast Mode: after the FM-0 plan), disjoint FE and BE work runs **in parallel** (Hard Rule 5); further independent work items fan out too. A work item that necessarily touches shared FE+BE files is **serialized**, not parallelized (Hard Rules 5 + 7).
+- **Parallelism (the rule).** Once the plan is frozen (full mode: after the Step 3 critic pass; Fast Mode: after the FM-1 critic pass), disjoint FE and BE work runs **in parallel** (Hard Rule 5); further independent work items fan out too. A work item that necessarily touches shared FE+BE files is **serialized**, not parallelized (Hard Rules 5 + 7).
 - **Cross-boundary contract.** Where FE depends on a BE interface (API shape, payload schema), that contract is fixed in the plan before parallel implementation starts, so neither side blocks the other.
 - **Boundaries unchanged.** All §1 write-scope, security, test, and product-contract rules bind both implementers identically.
 
 ### Codex Rescue Delegation
 
-Codex (`codex:codex-rescue`) runs the **backend implementation/fix** (Steps 4, 5a / FM-1) **and, in full mode, the critic + audit gates** (Steps 3, 6).
+Codex (`codex:codex-rescue`) runs the **backend implementation/fix** (Steps 4, 5a / FM-2), the **critic** (Step 3 / FM-1), and — full mode only — the **audit** (Step 6).
 
 - **Invocation.** The orchestrator invokes the `codex:codex-rescue` subagent via the **Agent tool** (`subagent_type: "codex:codex-rescue"`), forwarding the task; Codex performs the work through its own runtime and returns the deliverable. Do **not** call `Skill(codex:rescue)` from the agent loop — that re-enters the operator-facing slash command and hangs the session (`/codex:rescue` is the human entry point; there is no `codex:codex-rescue` skill). The orchestrator then applies § Orchestrator Handoff Discipline to that deliverable exactly as for a Claude subagent's output.
-- **Independence (critic/audit).** The critic (Step 3) and audit (Step 6) — both full mode — MUST run as **fresh Codex sessions**, separate from any backend-implementation session — so Codex never reviews backend code in the same context that wrote it. (Reviewing the Claude-written plan / scaffolds / frontend is already cross-engine.)
+- **Independence (critic/audit).** The critic (Step 3 / FM-1) and audit (Step 6) MUST run as **fresh Codex sessions**, separate from any backend-implementation session — so Codex never reviews backend code in the same context that wrote it. (Reviewing the Claude-written plan / scaffolds / frontend is already cross-engine.)
 - **Prerequisite.** Codex CLI must be ready. Run `/codex:setup` once before the first delegated step; if the rescue runtime is unavailable mid-phase, insert a blocker phase (Hard Rule 4) — do **not** silently reassign the work to a Claude agent without recording it.
 - **Briefing contract.** The rescue prompt IS Codex's contract: phase number/title/scope, current gate, the work items (+ FE↔BE interface contract for implementation), required reads, allowed write scope (implementation: backend production code, + mock tests in Fast Mode; critic/audit: reports under `docs/` only), and expected output.
 
@@ -270,7 +269,7 @@ The rule above covers most transitions (read the just-landed deliverable end-to-
 | Step 4 dispatch (FE ∥ BE) | Brief `builder` with FE items + scaffolds and Codex with BE items + interface contract; confirm disjoint write ranges; quote a specific plan/critic finding to each. |
 | Step 5 (validator) → Step 5a / Step 6 | Record per-gate verdicts; route FE defects to `builder`, BE defects to Codex. |
 
-In **Fast Mode** the orchestrator uses its own FM-0 plan to dispatch the backend to Codex (FM-1) while writing the frontend itself, then reads Codex's backend diff alongside its own frontend diff before live verification (FM-2).
+In **Fast Mode** the same discipline applies at FM-0→FM-1 (read the plan), FM-1→FM-2 (read the critic verdict; brief `builder` + Codex in parallel), and FM-2→FM-3 (read both diffs before live verification).
 
 **The only exceptions** are during initial setup (before Step 0 of phase 1) or when the deliverable is unambiguously trivial (e.g. a 5-line `.gitignore` patch from worker — `cat`-level scan suffices). Use judgment but bias toward reading.
 
@@ -282,7 +281,7 @@ When the user says `auto mode`:
 2. Continue the current phase, or insert the smallest blocker-resolution phase if blocked (including Codex rescue runtime unavailability).
 3. Follow the active mode's gates exactly; do not advance until all gates pass.
 4. **Step 0 / FM-0 direction gate:** the orchestrator stands in for the operator and decides the chosen route itself, then writes it into `ROADMAP.md` — it does **not** halt for sign-off here (normal mode halts; auto mode does not).
-5. **Auto-commit** on the mode's final step (Step 7 / FM-3) per Commit Policy above.
+5. **Auto-commit** on the mode's final step (Step 7 / FM-4) per Commit Policy above.
 6. **Halt at operator-validation boundaries** (per Hard Rule 9) for explicit operator validation; do not auto-advance across major version gates.
 7. **Write a § Session Handoff** to `ROADMAP.md` before the session ends or context fills, and tell the user — so the next session resumes cleanly.
 8. **Never self-edit `CLAUDE.md`** without explicit operator approval (Hard Rule 10), even when running unattended.
