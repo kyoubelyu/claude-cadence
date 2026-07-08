@@ -2,15 +2,13 @@
 
 Behavioral guidelines and multi-agent process rules for this codebase.
 
-**Tradeoff:** Bias toward caution over speed. For trivial tasks, use judgment.
-
 ## Project Scope
 
 _Reserved for per-repository scope. Populate with:_
 
 - **Product goal** — what this codebase ships and to whom.
 - **Approved capabilities** — the libraries, frameworks, runtime surfaces, and external interfaces the agent may use.
-- **Owned components** — paths under this repo that the agent edits (`src/`, `tests/`, configs, README, etc.) plus the published product contract (bin entrypoint, exports, on-disk schemas).
+- **Owned components** — paths the agent edits (`src/`, `tests/`, configs, docs). Record where the **frontend / backend boundary** falls (paths, packages) so FE/BE routing is unambiguous.
 - **External authoritative systems** — frameworks/SDKs/services treated as external truth (pin versions, verify behavior against docs, do not silently upgrade).
 - **Explicit non-goals** — features and integrations that are out of scope; record retired/abandoned directions with date + rationale.
 - **Live environment** — what the agent operates against during verification (real user account, real browser, real API), and which phases are read-only vs. full live windows.
@@ -25,8 +23,10 @@ If any of these are unclear, resolve them during Step 0 exploration (§2 → Pha
 | --- | --- |
 | Simple task (one obvious edit) | Project Scope + §1 Coding Behavior → dispatch to `worker` |
 | Non-simple task | §2 Process Governance |
+| `fast mode` trigger | §2 → Fast Mode |
 | `auto mode` trigger | §2 → Auto Mode |
-| Resume / interruption / context compaction | Re-read this file + `ROADMAP.md` |
+| Session nearly full / handing off | §2 → Session Handoff |
+| Resume / interruption / context compaction | Re-read this file + `ROADMAP.md` (incl. its § Session Handoff) |
 
 §1 Coding Behavior applies to every agent that writes code. §2 Process Governance governs non-simple work only.
 
@@ -54,16 +54,6 @@ If any of these are unclear, resolve them during Step 0 exploration (§2 → Pha
 - If you write 200 lines and it could be 50, rewrite it.
 
 Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-### Product Contract (operator-facing surface)
-
-**The published package surface — CLI entrypoint, library exports, system prompt structure, tool inventory, on-disk schemas — is the operator-facing product contract.**
-
-- Public structural invariants (prompt composition order, file layout, command shape) are part of the contract. Content inside the structure may be tuned per phase; structure changes require a major version bump.
-- Tool name + parameter schema is part of the contract. Renaming or schema-tightening requires a major version bump.
-- Any load-bearing security claim (e.g. a no-bash / no-shell-out boundary at the agent's tool layer, capability allowlist, credential isolation) is non-negotiable: changes that weaken it are Phase Gate Matrix items, never worker tasks.
-- On-disk paths and config file schemas are stable across patch versions; schema changes go through the Phase Gate Matrix with an explicit migration plan.
-- Maintainers updating these surfaces go through §2 Phase Gate Matrix.
 
 ### Surgical Changes
 
@@ -96,60 +86,30 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ### Code & Test Policy
 
-- **File size:** source files ≤ 800 lines. Split before a planned change would push over. Generated files, lockfiles, vendored dependencies, snapshots, build artifacts, and data fixtures are exempt when not manually maintained.
-- **Tests:** every behavior change ships mock test code where the behavior can be modeled. Automated mock tests run before live verification.
-- **Live verification:** every implementation phase that touches an external authoritative system includes platform-level smoke tests against the real target. Mock-only is insufficient unless `ROADMAP.md` defines the phase as research/prototype-only.
-- **Interactive / end-to-end testing:** when an agent must be driven end-to-end (full LLM loop + real tools) for a live verification, use the project-sanctioned harness (e.g. a real CLI launched inside a tmux pane and steered with `tmux send-keys` / `tmux capture-pane`). Ground-truth every result against the audit log and direct evidence from the external system — never trust UI text alone.
-- **Real-agent vs. tool-smoke distinction:** a *live test of the agent* MUST drive the full agent loop (system prompt + LLM + the agent's own tool selection). A test that invokes tools directly bypassing the LLM is a **tool/integration smoke** — it verifies the tool layer, not that the agent works, and MUST NOT be counted as agent live-verification.
-- **Tool-gap rule:** if the real agent cannot complete a live-test task because a tool is missing or inadequate, the `validator` RECORDS and REPORTS it as a finding — never papers the gap over with a test-side workaround. The **orchestrator** evaluates the gap and decides whether a new/extended tool is warranted; tool inventory changes are a Phase Gate decision, never a validator one.
-- **External authoritative systems cross-check:** treat external SDKs/protocols/services as authoritative — pin versions, verify behavior against docs and source, do not assume features exist without dependency-level confirmation. Do not silently upgrade across phases.
+- **File size:** source files ≤ 800 lines; split before a planned change would push over. Generated/vendored files, lockfiles, snapshots, build artifacts, and fixtures are exempt.
+- **Tests:** every behavior change ships tests (mock where the behavior can be modeled); run them before marking a step done.
+- **Verify for real:** don't sign off on mocks alone — exercise the actual code path (run the real build / app / flow, and hit the real dependency if there is one) before a phase is done, and ground-truth the result against direct evidence, not just surface output. *(If there's nothing external to exercise, running the real thing still counts.)*
+- **Dependencies:** pin third-party versions; verify behavior against docs/source; no silent upgrades across phases.
 
-### Test Discipline (outside-in TDD + BDD-light)
+### Test Discipline (BDD-light)
 
-**Outside-in TDD**: validator writes failing test scaffolds **BEFORE** builder implements (Phase Gate Matrix Step 3 precedes Step 4). Scaffolds compile + all assertion bodies are TODO; tests intentionally fail. Builder's job at Step 4 is to make scaffolds compile + reach the assertion-TODO branch (no need to make TODO assertions pass yet — those are filled at Step 5). Validator's Step 5 fills assertion bodies + adds edge cases + runs the full suite.
-
-Why: the test scaffold IS the contract. Writing scaffolds before code prevents validator unconsciously aligning tests to whatever builder happened to implement. Architect's §5 plan must list **testable behaviors** (concrete pre/post conditions), not abstract gates. The pre-written scaffold catches builder/spec mismatch at Step 4 not at Step 5a rounds later.
-
-**BDD-light** (independent of TDD; adopted together):
-- **Test names describe behavior, not function names.** Example: `T-Compact.2: when messages.length <= LAST_K, returns messages unchanged with summarizedCount=0`. Not: `test compactMessages()`.
-- **One-line Given/When/Then intent comment per test** above each `test()` / `it()` body. Example:
-  ```typescript
-  // Given: piped stdin EOF before while-loop runs
-  // When:  rl.question() called on closed readline interface
-  // Then:  resolves null cleanly via try/catch (no ERR_USE_AFTER_CLOSE throw)
+Test-writing style for all test code. (The outside-in TDD gate flow — who writes scaffolds when, and the two-pass test doc — lives in §2 → Outside-in TDD.)
+- **Test names describe behavior, not function names.** Example: `T-Cache.2: when the key is absent, returns the default and writes nothing`. Not: `test getValue()`.
+- **One-line Given/When/Then intent comment per test** above each test body. Example:
+  ```
+  // Given: an empty cache
+  // When:  get(key) is called
+  // Then:  returns the default; no write occurs
   test("...", () => { ... });
   ```
 - **`describe(behavior) { it(scenario) }`** blocks group related tests by behavior surface. Prefer describe/it for new tests.
 - **NO Gherkin / NO `.feature` files / NO Cucumber.** The discipline is in test names + intent comments + describe grouping; separate spec files add overhead without value.
 
-**`docs/phase-N-test.md` is two-pass.** Validator writes it twice in a single phase:
-1. **Step 3** (scaffold-time): test contract — list of test names + intent comments + which gates they cover. Tells builder + guardian what behaviors are about to be verified.
-2. **Step 5 final** (post-run, after all 5a iterations): test report — actual results, defects found, gate verdicts, residual risks. Appended as additional sections; the Step-4a test contract stays in the doc as historical record.
-
-The accumulated `phase-N-test.md` is self-contained: contract → results trail.
-
 ### Commit + Release Policy
 
-- **Auto-commit on phase completion:** when Step 7 of the Phase Gate Matrix marks a phase complete, the orchestrator creates a git commit summarizing that phase's work.
-- When preparing a commit, list every changed file with a one-sentence description of its change.
-- Commit attribution trailer is project-defined (record it in this section if used).
-- Commits never include credential values. Credential / secret files stay outside git (gitignored). If an agent surfaces a credential in any docs, log, or commit message, treat it as an incident and rotate the credential.
-- **Step 7 sequence:**
-  0. **Bump `package.json` `version` (or equivalent version manifest) to match `<next-version>` (without the `v` prefix).** If a startup auto-updater reads the manifest, drift causes false "behind" detection and infinite update loops on global installs. The bump must be part of the phase commit.
-  1. `git add` + `git commit` with phase summary.
-  2. `git tag -a <next-version> -m "<phase title>"` — annotated tag; body becomes the GitHub Release notes.
-  3. `git push origin main` then `git push origin <next-version>` — tag push fires the release workflow which auto-creates a GitHub Release.
-
-Concrete version assignment is owned by `ROADMAP.md` § Version sequence — orchestrator reads ROADMAP at Step 7 to pick the next tag.
-
-### LLM Configuration
-
-- **Default model:** pinned in code/config; switching providers does not require a new release. Record the verified default alias key here when populating per-project.
-- **Precedence (suggested):** factory `model:` parameter > CLI `--model <provider:modelId>` flag > env var > on-disk auth config `default` field > hardcoded fallback.
-- **Provider auth:** env var (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) OR managed auth config file. Providers that piggyback on another's protocol (e.g. DeepSeek via OpenAI-compatible `baseURL`) are recorded here.
-- **Inline `.env` reader at CLI startup** is acceptable (no runtime `dotenv` dependency needed); provide an opt-out env var.
-
-> Per-project env-var enumeration belongs in `ROADMAP.md` § Env-var reference — a per-phase-accreting catalogue belongs with phase tracking, not in CLAUDE.md (which holds stable code/project requirements + process).
+- **Commit on phase completion:** when the active mode's final step marks a phase complete (Step 7 / FM-4), the orchestrator makes one git commit for that phase, listing each changed file with a one-sentence description.
+- **No secrets in commits:** credential/secret files stay gitignored; a surfaced secret is an incident — rotate it. Attribution trailer is project-defined.
+- **Releases are project-specific.** If the project versions or tags releases, do it as part of the phase commit (bump the version manifest, tag, push); otherwise a plain commit is enough. `ROADMAP.md` owns the version/milestone sequence if there is one.
 
 ---
 
@@ -157,109 +117,140 @@ Concrete version assignment is owned by `ROADMAP.md` § Version sequence — orc
 
 ### Roadmap
 
-- Canonical path: `ROADMAP.md`. Read before meaningful work; create if missing before non-simple implementation.
-- Every phase completion and every blocker must update the roadmap with: status, scope, gates, live verification target, blockers, next action.
+- Canonical path: `ROADMAP.md`. Read before meaningful work; create if missing before non-simple implementation. Layout templates live in `TEMPLATES.md` (roadmap entry + phase doc).
+- Every phase completion and every blocker must update the roadmap with: status, scope, gates, **FE/BE work-item classification**, run mode (full vs Fast Mode), live verification target, blockers, next action.
+- **Decision log:** every operator decision (direction, sign-off, scope change, exception) is appended to a `## Decisions` block in `ROADMAP.md` with date + one-line rationale. Before accepting one, the orchestrator MUST reason it through first and MAY push back with a counter-argument — it never complies blindly; it records the decision only once resolved, then proceeds.
+- **Division of state:** `ROADMAP.md` holds live progress/state; `CLAUDE.md` holds durable core/process (Hard Rule 10). Don't put process rules in the roadmap, or transient phase state in `CLAUDE.md`.
+
+### Session Handoff
+
+When the current session approaches its context limit (or before a deliberate stop), the orchestrator writes a **handoff** into `ROADMAP.md` so the next session can resume cold, then tells the user a handoff was written and the work should continue in a fresh session.
+
+Maintain a single `## Session Handoff` block in `ROADMAP.md` (overwritten each time), recording:
+- active phase + current gate/step, and run mode (full / Fast Mode);
+- what just landed (last deliverable) and the exact next action;
+- open blockers, in-flight FE/BE work + which actor owns each, and any uncommitted state;
+- the next dispatch: which actor to invoke and which doc to read first.
+
+On resume / context compaction, re-read `CLAUDE.md` + `ROADMAP.md` (including the handoff) before acting.
 
 ### Hard Rules
 
 1. Simple requirements (e.g. a single obvious edit) may be handled directly by `worker`.
-2. Non-simple requirements must use the Phase Gate Matrix; no step starts until the previous passes; no phase starts until the previous completes Step 7.
-3. No implementation before research, plan, and critic approval.
-4. Blockers must be inserted into `ROADMAP.md` as a blocker phase before being worked around.
-5. Subagents are serial by default. Parallel work is allowed only after the main plan is frozen and the tasks have independent concerns or disjoint write ranges.
-6. Source classification, contract impact, and external-system runtime behavior must be resolved before implementation begins.
+2. Non-simple requirements must use the Phase Gate Matrix (or Fast Mode where eligible); no step starts until the previous passes; no phase starts until the previous completes its final step.
+3. No implementation before research, plan, test-scaffold, and critic approval (full mode). In Fast Mode, no implementation before the orchestrator's plan (FM-0) and the FM-1 critic pass.
+4. Blockers must be inserted into `ROADMAP.md` as a blocker phase before being worked around — including unavailability of the Codex rescue runtime.
+5. Subagents are serial by default. Parallel work is allowed only after the plan is frozen and the tasks have independent concerns or disjoint write ranges — each parallel owner in its own worktree (Hard Rule 12); the FE/BE split is the canonical parallel case (see § Frontend / Backend Split).
+6. Source classification, contract impact, FE/BE routing, and external-system runtime behavior must be resolved before implementation begins.
 7. Resource-exclusive verification (e.g. only one browser instance, only one DB lock) must run serially.
-8. Any load-bearing security boundary defined in §1 → Product Contract is non-negotiable **at the agent / tool layer**. Operator-initiated CLI-layer exceptions (narrow maintenance commands) require Phase Gate Matrix Steps 0–7 with explicit operator approval at Step 2 (Critic), and a CLAUDE.md amendment recording the approved use case. The agent's LLM-callable tool surface remains within the boundary without exception.
-9. **Operator validation gates between major versions:** record explicit operator sign-off points (e.g. v0.3 → v0.4 → v1.0). Auto-mode must halt at these boundaries.
+8. Any load-bearing security boundary the project relies on (auth, credential isolation, sandbox/permission limits) is non-negotiable. Weakening it is a full Phase Gate Matrix item with explicit operator approval at the critic gate (Step 3) + a CLAUDE.md amendment recording the approved use case — never a worker or Fast Mode task.
+9. **Operator validation gates at major milestones:** record explicit operator sign-off points (release boundaries or other big milestones). Auto-mode must halt at these boundaries.
+10. **`CLAUDE.md` is the project core + the agent's operating contract (its identity / "soul").** The agent MUST NOT create, edit, or self-update `CLAUDE.md` without explicit operator approval — operator-approved amendments (e.g. the Hard Rule 8 exception path) are the only way it changes. Live progress/state lives in `ROADMAP.md`; durable core/process lives in `CLAUDE.md`.
+11. **Gate work runs in subagents — the orchestrator coordinates, it does not do the work.** In **full mode** the orchestrator's *only* hands-on gates are Step 0 (exploration + roadmap) and Step 7 (commit); **every other gate MUST be dispatched to its designated actor via the Agent tool** — the `architect` / `validator` / `builder` Claude subagents, or Codex (via the companion CLI, § Codex Delegation) for backend + critic + audit — and the orchestrator MUST NOT write a plan, test scaffold, production code, critique, or audit itself. Collapsing a full-mode gate into the main loop defeats the independent-review design and is a process violation. In **Fast Mode** the orchestrator is hands-on only for FM-0 (plan), FM-3 (live verification), and FM-4 (commit); the FM-1 critic and FM-2 implementation are dispatched (critic + backend → Codex, frontend → `builder`). **The orchestrator never writes production code in either mode.** (Simple `worker` tasks under Hard Rule 1 also run in the `worker` subagent, not the main loop.)
+12. **Every task sub-owner works in its own git worktree.** A subagent that owns a roadmap task (or an FE/BE work item) operates in a dedicated worktree/branch; parallel owners never share a working tree. No subagent merges into the integration branch — the orchestrator reviews each owner's diff and decides the **merge** (merge is an orchestrator step, after its review).
 
-### Phase Gate Matrix
+### Phase Gate Matrix (full mode)
 
-**Non-simple work runs these gates in order.** The orchestrator tells every subagent: phase number, title, scope, current gate, required reads, allowed writes, expected output. **Every agent must read the phase-N entry in `ROADMAP.md` before doing its step** — the entry defines goal, scope, gates, live verification target, blockers, next action.
+**Non-simple work runs these gates in order.** Each gate runs in its actor's **own subagent invocation** (Agent tool) — the orchestrator dispatches, reads deliverables, and routes, but does **not** perform gate work itself (Hard Rule 11). The orchestrator tells every actor: phase number, title, scope, current gate, FE/BE assignment, required reads, allowed writes, expected output. **Every actor must read the phase-N entry in `ROADMAP.md` before doing its step** — the entry defines goal, scope, gates, FE/BE classification, live verification target, blockers, next action.
 
-**Outside-in TDD:** the validator writes the test scaffold (Step 3) **before** the builder implements (Step 4). See § Test Discipline above for the full rationale.
+**Outside-in TDD:** the validator writes the test scaffold (Step 2) **before** the implementers (Step 4), and the critic (Step 3) reviews plan + scaffold together — detailed in § Outside-in TDD below.
 
 **Operator direction gate (Step 0):** the orchestrator explores directly, then confirms the chosen route/direction with the human operator **before** writing it into `ROADMAP.md`. In normal (non-auto) mode the orchestrator **halts** for operator sign-off here. In auto mode the orchestrator stands in for the operator and decides the direction itself (see § Auto Mode).
 
-| Step | Gate | Agent | Required Reads¹ | Allowed Writes² | Output | On Fail |
+| Step | Gate | Actor | Required Reads¹ | Allowed Writes² | Output | On Fail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Roadmap Entry + Exploration | orchestrator | prior phase docs (if any) | roadmap | exploration findings + chosen direction confirmed with operator (non-auto: halt for sign-off; auto: orchestrator decides), written as the new phase-N entry in `ROADMAP.md` | → 1 |
-| 1 | Plan | `architect` | phase-N entry (exploration findings) | docs | `docs/phase-N-plan.md` (§5 must list **testable behaviors** with concrete pre/post conditions, not abstract gates) | → 2 |
-| 2 | Critic | `guardian` | plan | docs | `docs/phase-N-critics.md` | → 2a or 0 |
-| 2a | Plan Revision | `architect` | critics doc | docs | revised plan (if a research/exploration gap is found, hand back to orchestrator → Step 0) | → 2 |
-| **3** | **Test Scaffold** | **`validator`** | plan §5 + §6 sketches | test code (scaffolds — compileable, all-failing, named per §5; assertion bodies are TODO) + docs (initial `docs/phase-N-test.md` § Test Contract: name + GWT intent comment + which gates each covers) | scaffolds compile + all fail; test contract doc | → 4 |
-| **4** | **Implementation** | **`builder`** | plan + Step 3 scaffolds | code (production only — NO test files) | scoped code; scaffolds compile + reach assertion-TODO branch (no need to satisfy TODO assertions yet — those are filled at Step 5) | → 5 |
-| 5 | Validation | `validator` | plan + builder diff + own scaffolds | test code (fill assertion bodies + add edge cases) + docs (append § Results to `docs/phase-N-test.md`) | mock + live tests + final test report (defects, gate verdicts, residuals) | → 5a |
-| 5a | Validation Fix | `builder` | test + plan | code (production only) | scoped fixes | → 5 |
-| 6 | Final Review (Audit) | `guardian` | all phase docs | docs | `docs/phase-N-review.md` | → 5a |
-| 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | phase-N entry marked complete; **`git commit` + `git tag` + `git push origin main` + `git push origin <tag>` (workflow auto-publishes GitHub Release)** | phase complete |
+| 0 | Roadmap Entry + Exploration | orchestrator | prior phase docs (if any) | roadmap | exploration findings + operator-confirmed direction + FE/BE classification, written as the new phase-N entry in `ROADMAP.md` | → 1 |
+| 1 | Plan | architect | phase-N entry | docs | `docs/phase-N-plan.md` — §5 **testable behaviors** (concrete pre/post conditions) + §6 **code sketches**; FE/BE-separable sections + the FE↔BE interface contract | → 2 |
+| 2 | Test Scaffold (TDD) | validator | plan §5 (testable behaviors) + §6 (code sketches) | test code (scaffolds — compileable, all-failing, named per §5; assertion bodies are TODO) + docs (initial `docs/phase-N-test.md` § Test Contract) | scaffolds compile + all fail; test contract doc | → 3 |
+| 3 | Critic (plan + TDD) | Codex (fresh session) | plan + scaffolds + test contract | docs | `docs/phase-N-critics.md` — verdict on plan + scaffolds; findings tagged **BLOCKER** / **CONCERN** (CONCERN-MR = must-resolve before proceeding) / **NIT** | → 3a or 0 |
+| 3a | Plan / TDD Revision | architect (plan) / validator (TDD) | critics doc | docs / test code | revised plan and/or revised scaffolds (research/exploration gap → hand back to orchestrator → Step 0) | → 3 |
+| **4** | **Implementation (FE ∥ BE)** | **`builder` (frontend) + Codex (backend)** | plan + Step 2 scaffolds | code (production only — NO test files; routed per § Frontend / Backend Split) | scoped code; scaffolds compile + reach assertion-TODO branch | → 5 |
+| 5 | Validation | validator | plan + FE & BE diffs + own scaffolds | test code (fill assertion bodies + add edge cases) + docs (append § Results to `docs/phase-N-test.md`) | mock + live tests + final test report (defects, gate verdicts, residuals) | → 5a |
+| 5a | Validation Fix (FE ∥ BE) | `builder` (frontend) / Codex (backend) | test + plan | code (production only) | scoped fixes | → 5 |
+| 6 | Final Review (Audit) | Codex (fresh session) | all phase docs | docs | `docs/phase-N-review.md` | → 5a |
+| 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | phase-N entry marked complete; **commit per § Commit + Release Policy** | phase complete |
 
 ¹ **Implicit read for every step:** the phase-N entry in `ROADMAP.md`. The "Required Reads" column lists additional inputs on top of that.
 
-² **Write scopes** — `docs`: reports under `docs/` only. `test code + docs`: may write mock + live test code in `tests/**` + reports under `docs/`; no production code edits. `code`: production files within approved phase scope only — **builder MUST NOT write test files (mock or live); that is validator's exclusive scope at Steps 3 + 5**. If builder believes a test is needed during Step 4, hand it back to validator via SendMessage to the orchestrator. `roadmap + git`: only `ROADMAP.md` + git operations (commit/tag/push). At Step 0 the orchestrator owns exploration directly (Read/Grep/Glob/WebSearch) — `scout` is no longer part of the main matrix and is reserved for GitHub Issue Intake.
+² **Write scopes** — `docs`: reports under `docs/` only. `test code + docs`: may write mock + live test code in `tests/**` + reports under `docs/`; no production code edits. `code`: production files within approved phase scope only — **the implementers MUST NOT write test files (mock or live) in full mode; that is validator's exclusive scope at Steps 2 + 5**. FE/BE routing + disjoint write ranges are governed by § Frontend / Backend Split. If a test gap surfaces during Step 4, the orchestrator hands it back to validator rather than letting an implementer author tests. `roadmap + git`: only `ROADMAP.md` + git operations (commit/tag/push). At Step 0 the orchestrator owns exploration directly (Read/Grep/Glob/WebSearch).
 
-### Agent Roster
+### Outside-in TDD (gate mechanics)
 
-**Six agents — five specialized + one general-purpose.** `architect`, `guardian`, `builder`, and `validator` run inside the Phase Gate Matrix; `scout` is reserved for GitHub Issue Intake (Step 0 exploration is now done by the orchestrator directly). `worker` is the only general-purpose agent, sits outside the matrix, and handles simple work per Hard Rule 1. All agents may Read/Grep/Glob, run safe Bash (read-only), and WebFetch/WebSearch. All agents must `SendMessage` to the orchestrator (clarify, escalate, hand back); the orchestrator must `SendMessage` to any teammate.
+**Outside-in TDD**: validator writes failing test scaffolds (Step 2) **BEFORE** the implementers (Step 4) — and the critic (Step 3) reviews the plan **and** the scaffolds together. Scaffolds compile + all assertion bodies are TODO; tests intentionally fail. The implementers' job at Step 4 is to make scaffolds compile + reach the assertion-TODO branch (TODO assertions are filled at Step 5). Validator's Step 5 fills assertion bodies + adds edge cases + runs the full suite.
 
-**Effort levels**: if the harness exposes only a single global `effortLevel` knob, all agents inherit it. The per-agent effort column below is **design intent** — encode it in `.claude/agents/<name>.md` frontmatter once per-agent effort is supported.
+Why scaffold-before-critic: writing scaffolds first lets the critic catch plan/test mismatch in one pass, and prevents the validator unconsciously aligning tests to whatever the implementers produced.
 
-**Model `inherit`** means the agent follows the main session model. Set it explicitly via `model: inherit` in each agent's `.claude/agents/<name>.md` frontmatter — **omitting** `model` falls back to the harness default subagent model, which is not necessarily the main model.
+**`docs/phase-N-test.md` is two-pass (full mode).** Validator writes it twice in a single phase:
+1. **Step 2** (scaffold-time): test contract — test names + intent comments + which gates they cover. Tells the critic + implementers what behaviors are about to be verified.
+2. **Step 5 final** (post-run, after all 5a iterations): test report — actual results, defects, gate verdicts, residual risks. Appended; the Step-2 contract stays as historical record.
 
-| Agent | Steps | Write Permissions | Model | Effort |
-| --- | --- | --- | --- | --- |
-| `scout` | (issue intake only) | docs | `inherit` | xhigh |
-| `architect` | 1, 2a | docs | `inherit` | xhigh |
-| `guardian` | 2, 6 | docs | `inherit` | xhigh |
-| `builder` | 4, 5a | code (within phase scope) | `inherit` | xhigh (harness limit; design intent: medium) |
-| `validator` | 3, 5 | test code + docs | `inherit` | xhigh |
-| `worker` | (outside matrix) | code (simple tasks only) | `inherit` | xhigh |
-| orchestrator | 0, 7 | roadmap + git | — | — |
+The accumulated `phase-N-test.md` is self-contained: contract → results trail. Fast Mode differs (no scaffold step; implementers write their own mock tests) — see § Fast Mode → Deltas vs full mode.
+
+### Fast Mode
+
+**Trigger:** the user says `fast mode` (a process mode — distinct from Claude Code's built-in `/fast` output-speed toggle). For lower-risk or time-boxed work where the full gate set is overkill; it relaxes *process gates*, never *safety boundaries*. **Parallelize whatever can be parallelized.**
+
+**Eligibility (authoritative):** Fast Mode is **NOT** allowed for changes that touch a load-bearing security boundary (Hard Rule 8), schema migrations, or anything crossing an operator-validation boundary (Hard Rule 9). Those always use the full Phase Gate Matrix. If risk or a failure emerges mid-flight, escalate: open a normal phase and resume under full gates.
+
+| Step | Gate | Actor | Notes |
+| --- | --- | --- | --- |
+| FM-0 | Research + Plan | orchestrator | Orchestrator explores **and** writes the plan itself (no scout/architect), including FE/BE classification + the FE↔BE interface contract. Output: lightweight plan in the phase-N entry (+ optional `docs/phase-N-plan.md`). Direction gate still applies (see matrix preamble). |
+| FM-1 | Critic | Codex (fresh session) | Reviews the orchestrator's plan + FE/BE split. On fail → back to FM-0. |
+| FM-2 | Implementation + Mock Tests (FE ∥ BE) | `builder` (frontend) + Codex (backend) | Each writes production code **and** its layer's mock tests, in parallel on disjoint write ranges (§ Frontend / Backend Split). |
+| FM-3 | Live Verification | orchestrator | Orchestrator runs the mock suite + live smoke tests against the real target. On fail → back to FM-2 for the responsible layer. |
+| FM-4 | Commit | orchestrator | Commit sequence per § Commit + Release Policy. |
+
+**Deltas vs full mode:**
+- **Dropped:** the architect plan gate (orchestrator plans), the validator test-scaffold + validation gates, and the final **audit**. The critic (FM-1) is kept but reviews the plan only — no TDD scaffold exists.
+- **Test-authoring exception:** each implementer writes its own layer's **mock tests** alongside the code — the only place the "implementers must not write tests" rule is relaxed, scoped to mock tests.
+- **Participants:** orchestrator (plan / live verification / commit), `builder` (FE), Codex (FM-1 critic + BE implementation, separate sessions); `architect` and `validator` step aside.
+
+### Frontend / Backend Split
+
+Implementation and fix work is routed by layer; this section is authoritative for routing + parallelism.
+
+- **Frontend → Claude `builder`. Backend → Codex.** (Both modes; Codex runs via the companion CLI — § Codex Delegation.)
+- **Who classifies.** The **orchestrator** classifies each work item as FE or BE and records the classification in the phase-N `ROADMAP.md` entry (and references it from the plan). The architect's plan must keep FE and BE concerns in **separable sections with disjoint write ranges** so the two implementers don't collide.
+- **Parallelism (the rule).** Once the plan is frozen (full mode: after the Step 3 critic pass; Fast Mode: after the FM-1 critic pass), disjoint FE and BE work runs **in parallel** (Hard Rule 5); further independent work items fan out too. A work item that necessarily touches shared FE+BE files is **serialized**, not parallelized (Hard Rules 5 + 7).
+- **Cross-boundary contract.** Where FE depends on a BE interface (API shape, payload schema), that contract is fixed in the plan before parallel implementation starts, so neither side blocks the other.
+- **Boundaries unchanged.** All §1 rules bind both implementers identically.
+
+### Codex Delegation
+
+Codex runs the **backend implementation/fix** (Steps 4, 5a / FM-2), the **critic** (Step 3 / FM-1), and — full mode only — the **audit** (Step 6). The orchestrator delegates by running the Codex companion CLI in a **Bash** call — no subagent wrapper:
+
+```bash
+CODEX="…/codex-companion.mjs"      # path shown by /codex:setup
+node "$CODEX" task --write --fresh "<brief: phase/gate/scope · work items (+ interface contract) · required reads · write scope · expected output>"
+# same thread again: --resume-last   ·   review-only (no writes): drop --write
+```
+
+- **Independence (critic/audit):** run the critic (Step 3 / FM-1) and audit (Step 6) as **fresh** threads (`--fresh`), separate from the backend-implementation thread — Codex must not review code in the context that wrote it.
+- **Write scope:** implementation → backend code (+ mock tests in Fast Mode); critic/audit → reports under `docs/` only.
+- **Prerequisite:** Codex must be ready (`/codex:setup`); if unavailable mid-phase, insert a blocker phase (Hard Rule 4) — don't silently reassign the work.
+- **Clean up orphans:** a backgrounded or hung Codex job blocks the next task. After each delegation, `node "$CODEX" status --all` and `cancel` any orphan before starting a new one.
 
 ### Orchestrator Handoff Discipline
 
-**Between every Phase Gate Matrix step transition, the orchestrator MUST fully read the deliverable that just landed before dispatching the next agent.** "Read" means: **use the `Read` tool** on the file end-to-end (or at minimum: every BLOCKER + CONCERN-MR finding's full body, plus the verdict + routing-decision section). **Bash `grep` / `head` / `tail` / line-count is NOT enough** — those only confirm file presence and snippet shape, not content understanding.
+The orchestrator dispatches each gate to its actor — Claude subagents via the **Agent tool**, Codex via the companion CLI (§ Codex Delegation) — and never performs the gate itself (Hard Rule 11).
 
-**Enforcement:** the dispatch prompt to the next agent MUST quote at least one specific finding (file:line cite, exact recommended fix wording, or verbatim verdict rationale) as proof the deliverable was read. Hand-waving like "Guardian found 3 issues, route to fix" is a violation.
+**Read before you route.** Before dispatching the next actor, the orchestrator MUST fully read the deliverable that just landed — use the `Read` tool end-to-end (at minimum every BLOCKER/CONCERN finding + the verdict; a `grep`/`head`/`tail` scan is not enough) — and the dispatch prompt MUST quote one specific finding (file:line or verbatim fix wording) as proof. Routing blindly garbles context and costs a full step rework.
 
-**Why:** the dispatch prompt IS the next agent's contract. Routing blindly produces garbled context (wrong file:line citations, missed CONCERN-MRs, scope drift). Reading is cheap; mis-routing cascades cost a full step rework.
-
-Apply at each transition:
-
-| Transition | Orchestrator must read before dispatch |
-|---|---|
-| Step 0 (orchestrator exploration) → Step 1 (architect) | The phase-N `ROADMAP.md` entry end-to-end; confirm the operator-approved direction is recorded; surface any BLOCKER-RISK / OQ exploration items into architect's dispatch as required-action items. |
-| Step 1 (architect) → Step 2 (guardian) | `docs/phase-N-plan.md` end-to-end; verify §6.4 locked code sketches exist; note any concerns to flag for guardian's specific items-to-verify list. |
-| Step 2 (guardian) → Step 2a (architect) / Step 0 (re-explore) / Step 3 (validator) | `docs/phase-N-critics.md` end-to-end; categorize all BLOCKER / CONCERN / NIT findings; thread CONCERN-MR items into the next dispatch's instructions. |
-| Step 3 (validator) → Step 4 (builder) | Read initial `docs/phase-N-test.md` § Test Contract end-to-end; verify scaffolds list matches plan §5 testable-behaviors; thread test-name list into builder's dispatch so builder knows which behaviors must compile-pass. |
-| Step 4 (builder) → Step 5 (validator) | Run project-defined check/lint/build; verify scaffolds compile + reach assertion-TODO branch; thread any builder-flagged drift or pre-existing issues into validator's dispatch. |
-| Step 5 (validator) → Step 5a (builder) / Step 6 (guardian) | `docs/phase-N-test.md` end-to-end; record test pass counts + per-gate G-PN.x verdicts in dispatch context. |
-| Step 6 (guardian) → Step 7 (orchestrator self) / 5a (builder) | `docs/phase-N-review.md` end-to-end; if ACCEPT, proceed to Step 7; if REJECT, route back with full BLOCKER list. |
-
-**The only exceptions** are during initial setup (before Step 0 of phase 1) or when the deliverable is unambiguously trivial (e.g. a 5-line `.gitignore` patch from worker — `cat`-level scan suffices). Use judgment but bias toward reading.
-
-### GitHub Issue Intake
-
-New GitHub issues do NOT automatically become phases. Every issue must pass a three-stage triage before it enters `ROADMAP.md`:
-
-1. **Reproduction — `scout`.** Reproduce the reported behavior against the relevant authoritative system. Produce a short intake note under `docs/issue-N-intake.md` containing: exact command(s) run, observed JSON/behavior, expected behavior per issue, and whether reproduction succeeded.
-2. **Evaluation — `guardian`.** Read scout's intake note plus the relevant source. Decide: is this truly a defect in this codebase? An upstream issue in an external authoritative system? A regression in the target environment (possibly mitigable here)? User/agent misuse already documented? Out of scope (non-goal)? Record the classification in `docs/issue-N-intake.md` with a file:line justification.
-3. **Decision — orchestrator (team-lead).** Read scout + guardian output. Choose exactly one:
-   - **Accept → new phase.** Insert a phase into `ROADMAP.md` (In Progress or queued), then run the Phase Gate Matrix from Step 0.
-   - **Defer.** Record under `ROADMAP.md` → "Incomplete / Deferred" with the intake note linked.
-   - **Reject.** Close the issue on GitHub with a one-line rationale pointing to the intake note.
-
-**Hard rule:** no phase may be opened for a GitHub issue before all three stages complete. `worker` may only handle an issue directly if it is a simple requirement per Hard Rule 1 AND the orchestrator has classified it as such after triage.
+**Exceptions:** initial setup (before phase 1's Step 0) or an unambiguously trivial deliverable (e.g. a 5-line `worker` patch).
 
 ### Auto Mode
 
-When the user says `auto mode`:
+When the user says `auto mode`, the orchestrator runs the roadmap unattended:
 
-1. Re-read this `CLAUDE.md` and `ROADMAP.md` (also on resume, interruption, or context compaction).
-2. Continue the current phase, or insert the smallest blocker-resolution phase if blocked.
-3. Follow the Phase Gate Matrix exactly; do not advance until all gates pass.
-4. **Step 0 direction gate:** the orchestrator stands in for the operator and decides the chosen route itself, then writes it into `ROADMAP.md` — it does **not** halt for sign-off here (normal mode halts; auto mode does not).
-5. **Auto-commit on Step 7** per Commit Policy above.
-6. **Halt at operator-validation boundaries** (per Hard Rule 9) for explicit operator validation; do not auto-advance across major version gates.
+1. Re-read `CLAUDE.md` + `ROADMAP.md` (also on resume, interruption, or context compaction).
+2. **Task ownership.** Split the current phase into roadmap tasks and give each a **sub-owner** — one subagent, working in its own worktree (Hard Rule 12). The orchestrator stays the integrator; insert the smallest blocker-resolution phase if blocked.
+3. **Difficulty routing.** The orchestrator judges each task's difficulty and routes it: **Fast Mode** for lower-risk/localized work, the **full Phase Gate Matrix** for complex or contract-touching work. Record the chosen mode on the task.
+4. **Model policy.** Default every subagent to a **Sonnet-class** model — including full-mode gates. Escalate a task to an **Opus-class** model only when it is especially hard (novel design, tricky concurrency, wide blast radius); the orchestrator decides and notes it on the task.
+5. **Direction gate:** at Step 0 / FM-0 the orchestrator stands in for the operator and picks the route itself (no halt) — but still logs the decision (§ Roadmap → Decision log).
+6. **Merge + commit:** merge each sub-owner's worktree only after the orchestrator's review (Hard Rule 12); auto-commit on each phase's final step (Step 7 / FM-4).
+7. **Halt at operator-validation boundaries** (Hard Rule 9) — never auto-cross a major-version gate.
+8. **Write a § Session Handoff** before the session ends or context fills, and tell the user.
+9. **Never self-edit `CLAUDE.md`** without operator approval (Hard Rule 10).
 
 ---
 
