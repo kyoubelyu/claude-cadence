@@ -1,6 +1,6 @@
-# TEMPLATES.md
+# ROADMAP.md
 
-Copy-paste skeletons for `ROADMAP.md` and the per-phase docs. Referenced from `CLAUDE.md` → § Roadmap. Keep entries terse; fill the brackets, delete what you don't use.
+Canonical roadmap layout and per-phase document skeletons. Referenced from `CLAUDE.md` and `AGENTS.md` → § Roadmap. Keep entries terse; fill the brackets, delete what you don't use.
 
 ## `ROADMAP.md`
 
@@ -10,7 +10,9 @@ Copy-paste skeletons for `ROADMAP.md` and the per-phase docs. Referenced from `C
 ## Version sequence
 - v0.1 → v0.2 → …   (operator-validation gates — where auto-mode must halt: <…>)
 
-## Phase <N> — <title>   [status: In Progress | Blocked | Done]
+## Active Tasks
+
+### Task <ID> — <title>   [status: OPEN | BLOCKED]
 - **Goal:** <one line>
 - **Scope:** <paths / components in play>
 - **Run mode:** full | fast   •   **Difficulty → model:** sonnet | opus (<why opus, if so>)
@@ -23,6 +25,9 @@ Copy-paste skeletons for `ROADMAP.md` and the per-phase docs. Referenced from `C
 ## Decisions
 - <YYYY-MM-DD> — <operator decision> — rationale: <one line> — orchestrator: agreed | pushed back → <outcome>
 
+## Change History
+- <YYYY-MM-DD> — <task id/title> — CLOSED — <one sentence describing what is now true> (<version, evidence doc, or commit if useful>)
+
 ## Session Handoff
 - **Phase / gate:** <N / Step-or-FM> (<mode>)
 - **Last landed:** <deliverable>   •   **Next action:** <exact next step>
@@ -33,6 +38,8 @@ Copy-paste skeletons for `ROADMAP.md` and the per-phase docs. Referenced from `C
 ## Incomplete / Deferred
 - <item> — <why deferred> — <link>
 ```
+
+Keep only `OPEN` and `BLOCKED` tasks under `## Active Tasks`. At the completion gate, the agent completing the task removes its full entry and appends the single outcome sentence to `## Change History`; detailed execution history remains in phase docs and git.
 
 ## Phase docs (`docs/phase-<N>-*.md`)
 

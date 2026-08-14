@@ -4,16 +4,7 @@ Behavioral guidelines and multi-agent process rules for this codebase — Codex-
 
 ## Project Scope
 
-_Reserved for per-repository scope. Populate with:_
-
-- **Product goal** — what this codebase ships and to whom.
-- **Approved capabilities** — the libraries, frameworks, runtime surfaces, and external interfaces the agent may use.
-- **Owned components** — paths the agent edits (`src/`, `tests/`, configs, docs).
-- **External authoritative systems** — frameworks/SDKs/services treated as external truth (pin versions, verify behavior against docs, do not silently upgrade).
-- **Explicit non-goals** — features/integrations out of scope; record retired/abandoned directions with date + rationale.
-- **Live environment** — what the agent operates against during verification (real account, real browser, real API), and which phases are read-only vs. full live windows.
-
-If any of these are unclear, resolve them during Step 0 exploration (§2 → Phase Gate Matrix, Step 0) before implementation.
+Write one precise, concise paragraph describing the repository's current scope: what the product ships, who it serves, and the core product and technical boundaries agents must preserve. Keep only durable present-tense facts needed for implementation decisions; do not turn this section into a decision log, roadmap, dated history, retired-direction archive, or exhaustive component inventory. Resolve scope ambiguity during Step 0 exploration (§2 → Phase Gate Matrix, Step 0), and record the resulting live decision in `ROADMAP.md`, not here.
 
 ---
 
@@ -96,8 +87,9 @@ Test-writing style for all test code. (The outside-in TDD gate flow lives in §2
 
 ### Roadmap
 
-- Canonical path: `ROADMAP.md`. Read before meaningful work; create if missing. Layout templates live in `TEMPLATES.md`.
-- Every phase completion + blocker updates the roadmap: status, scope, gates, run mode, live verification target, blockers, next action.
+- Canonical path: `ROADMAP.md`. Read before meaningful work; create if missing. Its required layout and phase-document skeletons live in that file.
+- `ROADMAP.md` keeps full entries only for active work. Every `OPEN` or `BLOCKED` task records status, scope, gates, run mode, live verification target, blockers, and next action.
+- **Completion archive:** when a task becomes `CLOSED`, the agent completing it MUST update `ROADMAP.md` in the same completion gate without waiting for an operator reminder: remove the full task entry from active work and append one outcome-focused sentence under `## Change History`. Format: `YYYY-MM-DD — <task id/title> — CLOSED — <what is now true> (<version, evidence doc, or commit if useful>)`. Keep implementation narrative, gate transcripts, test counts, and intermediate findings in phase docs and git history, not in the roadmap.
 - **Decision log:** every operator decision (direction, sign-off, scope change, exception) is appended to a `## Decisions` block with date + one-line rationale. Before accepting one, the orchestrator MUST reason it through first and MAY push back — it never complies blindly; it records the decision only once resolved.
 - **Division of state:** `ROADMAP.md` holds live progress/state; `AGENTS.md` holds durable core/process (Hard Rule 10).
 
@@ -137,7 +129,7 @@ When the session nears its context limit (or before a deliberate stop), the orch
 | 5 | Validation | validator | plan + diff + scaffolds | test code + docs | mock + live tests + final report | → 5a |
 | 5a | Validation Fix | builder | test + plan | code | scoped fixes | → 5 |
 | 6 | Final Review (Audit) | guardian (fresh) | all phase docs | docs | `docs/phase-N-review.md` (ACCEPT / REJECT) | → 5a |
-| 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | phase complete; commit + tag + push | phase complete |
+| 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | task removed from active work and archived as one `Change History` sentence; commit + tag + push | phase complete |
 
 ¹ Implicit read every step: the phase-N `ROADMAP.md` entry. ² `docs` = reports under `docs/`; `test code + docs` = tests in `tests/**` + reports (no production edits); `code` = production files in scope, **no test files** (validator's exclusive scope at Steps 2 + 5); `roadmap + git` = `ROADMAP.md` + git only.
 

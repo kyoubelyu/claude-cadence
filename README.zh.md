@@ -71,7 +71,7 @@ curl -O https://raw.githubusercontent.com/kyoubelyu/claude-cadence/main/CLAUDE.m
 mkdir -p .claude/agents
 # ... copy scout.md / architect.md / guardian.md / builder.md / validator.md / worker.md
 
-# 3. 定制 CLAUDE.md 顶部的 §Project Scope
+# 3. 将 §Project Scope 写成一段精准文字：产品、用户和核心边界
 
 # 4. 在 tmux 里启动 Claude Code,带上 bypass permissions(必需)
 tmux new -s claude
@@ -256,8 +256,8 @@ Phase Gate Matrix 治理*流程*。`CLAUDE.md` 的 §1 Coding Behavior 治理代
 
 ```
 your-repo/
-├── CLAUDE.md                       # Harness 本体。单文件。定制 §Project Scope。
-├── ROADMAP.md                      # 每个 phase 的状态、gate、blocker、下一步。
+├── CLAUDE.md                       # Harness 本体。§Project Scope 保持为一段简洁文字。
+├── ROADMAP.md                      # 活动任务，以及已关闭任务的一行 Change History。
 ├── .claude/
 │   └── agents/
 │       ├── scout.md                # Step 1, 3a — 研究

@@ -4,16 +4,7 @@ Behavioral guidelines and multi-agent process rules for this codebase.
 
 ## Project Scope
 
-_Reserved for per-repository scope. Populate with:_
-
-- **Product goal** — what this codebase ships and to whom.
-- **Approved capabilities** — the libraries, frameworks, runtime surfaces, and external interfaces the agent may use.
-- **Owned components** — paths the agent edits (`src/`, `tests/`, configs, docs). Record where the **frontend / backend boundary** falls (paths, packages) so FE/BE routing is unambiguous.
-- **External authoritative systems** — frameworks/SDKs/services treated as external truth (pin versions, verify behavior against docs, do not silently upgrade).
-- **Explicit non-goals** — features and integrations that are out of scope; record retired/abandoned directions with date + rationale.
-- **Live environment** — what the agent operates against during verification (real user account, real browser, real API), and which phases are read-only vs. full live windows.
-
-If any of these are unclear, resolve them during Step 0 exploration (§2 → Phase Gate Matrix, Step 0) before implementation.
+Write one precise, concise paragraph describing the repository's current scope: what the product ships, who it serves, and the core product and technical boundaries agents must preserve. Keep only durable present-tense facts needed for implementation decisions; do not turn this section into a decision log, roadmap, dated history, retired-direction archive, or exhaustive component inventory. Resolve scope ambiguity during Step 0 exploration (§2 → Phase Gate Matrix, Step 0), and record the resulting live decision in `ROADMAP.md`, not here.
 
 ---
 
@@ -117,8 +108,9 @@ Test-writing style for all test code. (The outside-in TDD gate flow — who writ
 
 ### Roadmap
 
-- Canonical path: `ROADMAP.md`. Read before meaningful work; create if missing before non-simple implementation. Layout templates live in `TEMPLATES.md` (roadmap entry + phase doc).
-- Every phase completion and every blocker must update the roadmap with: status, scope, gates, **FE/BE work-item classification**, run mode (full vs Fast Mode), live verification target, blockers, next action.
+- Canonical path: `ROADMAP.md`. Read before meaningful work; create if missing before non-simple implementation. Its required layout and phase-document skeletons live in that file.
+- `ROADMAP.md` keeps full entries only for active work. Every `OPEN` or `BLOCKED` task records status, scope, gates, **FE/BE work-item classification**, run mode (full vs Fast Mode), live verification target, blockers, and next action.
+- **Completion archive:** when a task becomes `CLOSED`, the agent completing it MUST update `ROADMAP.md` in the same completion gate without waiting for an operator reminder: remove the full task entry from active work and append one outcome-focused sentence under `## Change History`. Format: `YYYY-MM-DD — <task id/title> — CLOSED — <what is now true> (<version, evidence doc, or commit if useful>)`. Keep implementation narrative, gate transcripts, test counts, and intermediate findings in phase docs and git history, not in the roadmap.
 - **Decision log:** every operator decision (direction, sign-off, scope change, exception) is appended to a `## Decisions` block in `ROADMAP.md` with date + one-line rationale. Before accepting one, the orchestrator MUST reason it through first and MAY push back with a counter-argument — it never complies blindly; it records the decision only once resolved, then proceeds.
 - **Division of state:** `ROADMAP.md` holds live progress/state; `CLAUDE.md` holds durable core/process (Hard Rule 10). Don't put process rules in the roadmap, or transient phase state in `CLAUDE.md`.
 
@@ -168,7 +160,7 @@ On resume / context compaction, re-read `CLAUDE.md` + `ROADMAP.md` (including th
 | 5 | Validation | validator | plan + FE & BE diffs + own scaffolds | test code (fill assertion bodies + add edge cases) + docs (append § Results to `docs/phase-N-test.md`) | mock + live tests + final test report (defects, gate verdicts, residuals) | → 5a |
 | 5a | Validation Fix (FE ∥ BE) | `builder` (frontend) / Codex (backend) | test + plan | code (production only) | scoped fixes | → 5 |
 | 6 | Final Review (Audit) | Codex (fresh session) | all phase docs | docs | `docs/phase-N-review.md` | → 5a |
-| 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | phase-N entry marked complete; **commit per § Commit + Release Policy** | phase complete |
+| 7 | Roadmap Update + Commit | orchestrator | all phase docs | roadmap + git | task removed from active work and archived as one `Change History` sentence; **commit per § Commit + Release Policy** | phase complete |
 
 ¹ **Implicit read for every step:** the phase-N entry in `ROADMAP.md`. The "Required Reads" column lists additional inputs on top of that.
 

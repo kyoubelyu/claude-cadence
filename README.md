@@ -71,7 +71,7 @@ curl -O https://raw.githubusercontent.com/kyoubelyu/claude-cadence/main/CLAUDE.m
 mkdir -p .claude/agents
 # ... copy scout.md / architect.md / guardian.md / builder.md / validator.md / worker.md
 
-# 3. Customize §Project Scope at the top of CLAUDE.md for your repo
+# 3. Replace §Project Scope with one precise paragraph describing the product, users, and core boundaries
 
 # 4. Launch Claude Code inside tmux with permissions bypassed (required)
 tmux new -s claude
@@ -256,8 +256,8 @@ The published surface — CLI entrypoint, library exports, system prompt structu
 
 ```
 your-repo/
-├── CLAUDE.md                       # The harness. Single file. Customize §Project Scope.
-├── ROADMAP.md                      # Per-phase status, gates, blockers, next action.
+├── CLAUDE.md                       # The harness. Keep §Project Scope to one concise paragraph.
+├── ROADMAP.md                      # Active tasks plus one-line closed-task Change History.
 ├── .claude/
 │   └── agents/
 │       ├── scout.md                # Step 1, 3a — research
